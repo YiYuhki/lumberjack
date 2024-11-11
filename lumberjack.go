@@ -1,9 +1,6 @@
 // Package lumberjack provides a rolling logger.
 //
-// Note that this is v2.0 of lumberjack, and should be imported using gopkg.in
-// thusly:
-//
-//	import "gopkg.in/natefinch/lumberjack.v2"
+//	import "github.com/YiYuhki/lumberjack"
 //
 // The package name remains simply lumberjack, and the code resides at
 // https://github.com/natefinch/lumberjack under the v2.0 branch.
@@ -215,33 +212,8 @@ func (l *Logger) openNew() error {
 
 	name := l.backupName(l.Filename, l.LocalTime)
 	mode := os.FileMode(0600)
-	/*
-		info, err := osStat(name)
-		if err == nil {
-			// Copy the mode off the old logfile.
-			mode = info.Mode()
-			// move the existing file
-			newname := l.backupName(l.Filename, l.LocalTime)
-			if err := os.Rename(name, newname); err != nil {
-				return fmt.Errorf("can't rename log file: %s", err)
-			}
 
-			// this is a no-op anywhere but linux
-			if err := chown(name, info); err != nil {
-				return err
-			}
-		}
-
-		// we use truncate here because this should only get called when we've moved
-		// the file ourselves. if someone else creates the file in the meantime,
-		// just wipe out the contents.
-		f, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-		if err != nil {
-			return fmt.Errorf("can't open new logfile: %s", err)
-		}
-	*/
 	var f *os.File
-
 	if _, err := os.Stat(name); err == nil {
 		f, err = os.OpenFile(name, os.O_APPEND|os.O_WRONLY, mode)
 		if err != nil {
