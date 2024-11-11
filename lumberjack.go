@@ -3,7 +3,7 @@
 // Note that this is v2.0 of lumberjack, and should be imported using gopkg.in
 // thusly:
 //
-//   import "gopkg.in/natefinch/lumberjack.v2"
+//	import "gopkg.in/natefinch/lumberjack.v2"
 //
 // The package name remains simply lumberjack, and the code resides at
 // https://github.com/natefinch/lumberjack under the v2.0 branch.
@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	backupTimeFormat = "2006-01-02T15-04-05.000"
+	backupTimeFormat = "2006-01-02T15:04:05"
 	compressSuffix   = ".gz"
 	defaultMaxSize   = 100
 )
@@ -66,7 +66,7 @@ var _ io.WriteCloser = (*Logger)(nil)
 // `/var/log/foo/server.log`, a backup created at 6:30pm on Nov 11 2016 would
 // use the filename `/var/log/foo/server-2016-11-04T18-30-00.000.log`
 //
-// Cleaning Up Old Log Files
+// # Cleaning Up Old Log Files
 //
 // Whenever a new logfile gets created, old log files may be deleted.  The most
 // recent files according to the encoded timestamp will be retained, up to a
@@ -106,6 +106,8 @@ type Logger struct {
 	// Compress determines if the rotated log files should be compressed
 	// using gzip. The default is not to perform compression.
 	Compress bool `json:"compress" yaml:"compress"`
+
+	BackupTimeFormat string `json:"backupTimeFormat" yaml:"backupTimeFormat"`
 
 	size int64
 	file *os.File
@@ -211,30 +213,45 @@ func (l *Logger) openNew() error {
 		return fmt.Errorf("can't make directories for new logfile: %s", err)
 	}
 
-	name := l.filename()
+	name := l.backupName(l.Filename, l.LocalTime)
 	mode := os.FileMode(0600)
-	info, err := osStat(name)
-	if err == nil {
-		// Copy the mode off the old logfile.
-		mode = info.Mode()
-		// move the existing file
-		newname := backupName(name, l.LocalTime)
-		if err := os.Rename(name, newname); err != nil {
-			return fmt.Errorf("can't rename log file: %s", err)
+	/*
+		info, err := osStat(name)
+		if err == nil {
+			// Copy the mode off the old logfile.
+			mode = info.Mode()
+			// move the existing file
+			newname := l.backupName(l.Filename, l.LocalTime)
+			if err := os.Rename(name, newname); err != nil {
+				return fmt.Errorf("can't rename log file: %s", err)
+			}
+
+			// this is a no-op anywhere but linux
+			if err := chown(name, info); err != nil {
+				return err
+			}
 		}
 
-		// this is a no-op anywhere but linux
-		if err := chown(name, info); err != nil {
-			return err
+		// we use truncate here because this should only get called when we've moved
+		// the file ourselves. if someone else creates the file in the meantime,
+		// just wipe out the contents.
+		f, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+		if err != nil {
+			return fmt.Errorf("can't open new logfile: %s", err)
 		}
-	}
+	*/
+	var f *os.File
 
-	// we use truncate here because this should only get called when we've moved
-	// the file ourselves. if someone else creates the file in the meantime,
-	// just wipe out the contents.
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return fmt.Errorf("can't open new logfile: %s", err)
+	if _, err := os.Stat(name); err == nil {
+		f, err = os.OpenFile(name, os.O_APPEND|os.O_WRONLY, mode)
+		if err != nil {
+			return fmt.Errorf("can't open logfile: %s", err)
+		}
+	} else {
+		f, err = os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+		if err != nil {
+			return fmt.Errorf("can't open new logfile: %s", err)
+		}
 	}
 	l.file = f
 	l.size = 0
@@ -244,17 +261,21 @@ func (l *Logger) openNew() error {
 // backupName creates a new filename from the given name, inserting a timestamp
 // between the filename and the extension, using the local time if requested
 // (otherwise UTC).
-func backupName(name string, local bool) string {
+func (l *Logger) backupName(name string, local bool) string {
 	dir := filepath.Dir(name)
 	filename := filepath.Base(name)
 	ext := filepath.Ext(filename)
 	prefix := filename[:len(filename)-len(ext)]
-	t := currentTime()
-	if !local {
-		t = t.UTC()
+	t := currentTime().UTC()
+	if local {
+		t = t.Add(9 * time.Hour)
 	}
 
-	timestamp := t.Format(backupTimeFormat)
+	format := backupTimeFormat
+	if l.BackupTimeFormat != "" {
+		format = l.BackupTimeFormat
+	}
+	timestamp := t.Format(format)
 	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, timestamp, ext))
 }
 
@@ -438,7 +459,12 @@ func (l *Logger) timeFromName(filename, prefix, ext string) (time.Time, error) {
 		return time.Time{}, errors.New("mismatched extension")
 	}
 	ts := filename[len(prefix) : len(filename)-len(ext)]
-	return time.Parse(backupTimeFormat, ts)
+
+	format := backupTimeFormat
+	if l.BackupTimeFormat != "" {
+		format = l.BackupTimeFormat
+	}
+	return time.Parse(format, ts)
 }
 
 // max returns the maximum size in bytes of log files before rolling.
