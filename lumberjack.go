@@ -3,7 +3,7 @@
 //	import "github.com/YiYuhki/lumberjack"
 //
 // The package name remains simply lumberjack, and the code resides at
-// https://github.com/natefinch/lumberjack under the v2.0 branch.
+// https://github.com/YiYuhki/lumberjack under the v2.0 branch.
 //
 // Lumberjack is intended to be one part of a logging infrastructure.
 // It is not an all-in-one solution, but instead is a pluggable
